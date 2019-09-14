@@ -20,8 +20,9 @@ uintptr_t heap_max_track = 0;
 struct meta_data{
     size_t alloc_size; //8 bytes
     bool allocated = 0; // 1 bit
+    void* last_pointer; //8 bytes
     void* payload; //8 bytes
-}; //24 bytes
+}; //32 bytes
 
 /// m61_malloc(sz, file, line)
 ///    Return a pointer to `sz` bytes of newly-allocated dynamic memory.
@@ -33,8 +34,8 @@ void* m61_malloc(size_t sz, const char* file, long line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     if(sz < UINT_MAX) {
         ++malloc_counter;
-        meta_data* info_ptr = (meta_data*)(base_malloc(24 + sz));
-        info_ptr->payload = (void*)(info_ptr + 24);
+        meta_data* info_ptr = (meta_data*)(base_malloc(32 + sz));
+        info_ptr->payload = (void*)(info_ptr + 32);
         info_ptr->alloc_size = sz;
         info_ptr->allocated = 1;
         total_size_acc += sz;
@@ -64,17 +65,23 @@ void* m61_malloc(size_t sz, const char* file, long line) {
 void m61_free(void* ptr, const char* file, long line) {
     (void) file, (void) line;   // avoid uninitialized variable warnings
     if(ptr){
-        meta_data* header =  (meta_data*)(ptr)  - 24;
-        ++free_counter;
-        active_size_acc -= header -> alloc_size;
-        if(header -> allocated == 1)
+        if(heap_min_track <= (uintptr_t)ptr && (uintptr_t)ptr <= heap_max_track)
         {
-            header -> allocated = 0;
-            base_free(header);
+            meta_data* header =  (meta_data*)(ptr)  - 32;
+            ++free_counter;
+            active_size_acc -= header -> alloc_size;
+            if(header -> allocated == 1) {
+                header -> allocated = 0;
+                base_free(header);
+            }
+            else{
+                fprintf(stderr, "MEMORY BUG: %s:%lu: invalid free of pointer %p, double free", file, line, ptr);
+                abort();
+            }
         }
         else
         {
-        fprintf(stderr, "MEMORY BUG: %s: invalid free of pointer , not in heap\n", file);
+        fprintf(stderr, "MEMORY BUG: %s:%lu: invalid free of pointer %p, not in heap\n", file, line, ptr);
         abort();
         }
     }
