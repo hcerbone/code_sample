@@ -112,53 +112,38 @@ void m61_free(void *ptr, const char *file, long line) {
 
       if (ptr_addr % 16 != 0 || (header->status_tag != magic_header &&
                                  header->status_tag != magic_free)) {
-        fprintf(
-            stderr,
-            "MEMORY BUG: %s:%lu: invalid free of pointer %p, not allocated\n",
-            file, line, ptr);
+        fprintf(stderr,
+                "MEMORY BUG: %s:%lu: invalid free of pointer %p, not allocated",
+                file, line, ptr);
         meta_data *curr_ptr = inter_ptr->prev_ptr;
         while (curr_ptr != nullptr && curr_ptr != inter_ptr) {
-          uintptr_t curr_addr = (uintptr_t)curr_ptr + meta_data_sz;
+          uintptr_t curr_addr = (uintptr_t)curr_node + meta_data_sz;
           if (ptr_addr >= curr_addr &&
               ptr_addr < curr_addr + curr_ptr->alloc_size)
-            fprintf(stderr,
-                    "  %s:%li: %p is %lu bytes inside a %lu byte region "
-                    "allocated here",
-                    curr_ptr->alloc_file, curr_ptr->alloc_line, ptr,
-                    ptr_addr - curr_addr, curr_ptr->alloc_size);
-          curr_ptr = curr_ptr->prev_ptr;
+            curr_ptr = curr_ptr->prev_ptr;
         }
         abort();
       } else {
-        if (header->status_tag == magic_free) {
+        void *footer_ptr = (void *)(ptr_addr + header->alloc_size);
+        if (memcmp(footer_ptr, &magic_footer, magic_footer_sz) != 0) {
+          fprintf(stderr,
+                  "MEMORY BUG:  %s:%lu: detected wild write during free of "
+                  "pointer %p\n",
+                  file, line, ptr);
+          abort();
+        } else if (header->status_tag != magic_free) {
+          header->status_tag = magic_free;
+          ++free_counter;
+          active_size_acc -= header->alloc_size;
+          header->prev_ptr->next_ptr = header->next_ptr;
+          header->next_ptr->prev_ptr = header->prev_ptr;
+          base_free((void *)header);
+        } else {
           fprintf(stderr,
                   "MEMORY BUG: %s:%lu: invalid free of pointer %p, double free",
                   file, line, ptr);
           abort();
         }
-      }
-      if (header->prev_ptr->next_ptr != header ||
-          header->next_ptr->prev_ptr != header) {
-        fprintf(stderr,
-                "MEMORY BUG: %s: %lu: invalid free of pointer %p, not "
-                "allocated\n",
-                file, line, ptr);
-        abort();
-      }
-      void *footer_ptr = (void *)(ptr_addr + header->alloc_size);
-      if (memcmp(footer_ptr, &magic_footer, magic_footer_sz) != 0) {
-        fprintf(stderr,
-                "MEMORY BUG:  %s:%lu: detected wild write during free of "
-                "pointer %p\n",
-                file, line, ptr);
-        abort();
-      } else if (header->status_tag != magic_free) {
-        header->status_tag = magic_free;
-        ++free_counter;
-        active_size_acc -= header->alloc_size;
-        header->prev_ptr->next_ptr = header->next_ptr;
-        header->next_ptr->prev_ptr = header->prev_ptr;
-        base_free((void *)header);
       }
     }
   }
@@ -219,12 +204,12 @@ void m61_print_statistics() {
 
 void m61_print_leak_report() {
   // Your code here.
-  meta_data *curr_ptr = inter_ptr->prev_ptr;
-  while (curr_ptr != nullptr && curr_ptr != inter_ptr) {
+  meta_data *curr_pointer = inter_ptr->prev_ptr;
+  while (curr_pointer != nullptr && curr_pointer != inter_ptr) {
     fprintf(stdout, "LEAK CHECK: %s:%lu: allocated object %p with size %lu\n",
-            curr_ptr->alloc_file, curr_ptr->alloc_line,
-            (char *)curr_ptr + meta_data_sz, curr_ptr->alloc_size);
-    curr_ptr = curr_ptr->prev_ptr;
+            curr_pointer->alloc_file, curr_pointer->alloc_line,
+            (char *)curr_pointer + meta_data_sz, curr_pointer->alloc_size);
+    curr_pointer = curr_pointer->prev_ptr;
   }
 }
 
