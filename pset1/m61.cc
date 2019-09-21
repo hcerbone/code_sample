@@ -23,20 +23,23 @@ unsigned long magic_header = 12345678;
 unsigned long magic_free = 121234345656;
 char magic_footer[] = "checkout";
 
-// meta_data that will be appended as a header to the value
+// meta_data that will be appended as a header to any malloc'd data
 struct meta_data {
-  size_t alloc_size;
-  unsigned long status_tag;
-  const char *alloc_file;
-  long alloc_line;
-  meta_data *prev_ptr;
-  meta_data *next_ptr;
+  size_t alloc_size;        // track allocated size
+  unsigned long status_tag; // unique tag to see if data allocated
+  const char
+      *alloc_file;     // pointer to hold name of file that requested allocation
+  long alloc_line;     // variable to hold line of code that requested allocated
+  meta_data *prev_ptr; // pointer to the previous allocation
+  meta_data *next_ptr; // pointer to the next allocation
 };
 
+// heavy hitter variables/structure
 struct loc {
   const char *file;
   long line;
 };
+
 unsigned long long byte_counters[6];
 unsigned long long alloc_freqs[6];
 loc count_locs[6];
@@ -66,13 +69,12 @@ void *m61_malloc(size_t sz, const char *file, long line) {
     size_t total_size = meta_data_sz + sz + magic_footer_sz;
     void *ptr = base_malloc(total_size);
     uintptr_t ptr_addr = (uintptr_t)ptr;
-
     meta_data *header_ptr = (meta_data *)(ptr);
     void *payload_ptr = (void *)(ptr_addr + meta_data_sz);
     void *footer_ptr = (void *)(ptr_addr + meta_data_sz + sz);
-
     memcpy(footer_ptr, &magic_footer, magic_footer_sz);
 
+    // populate meta_data
     header_ptr->alloc_size = sz;
     header_ptr->status_tag = magic_header;
     header_ptr->alloc_line = line;
