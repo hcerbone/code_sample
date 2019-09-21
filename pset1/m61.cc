@@ -142,6 +142,17 @@ void *m61_malloc(size_t sz, const char *file, long line) {
         }
       }
     }
+    if (!fnd_freq) {
+      if (zero_frq != -1) {
+        freq_locs[zero_frq] = {file, line};
+        alloc_freqs[zero_frq] = 1;
+      } else {
+        for (int i = 0; i < 6; ++i) {
+          assert(alloc_freqs[i] > 0);
+          alloc_freqs[i] -= 1;
+        }
+      }
+    }
     return payload_ptr;
   } else {
     ++fail_counter;
