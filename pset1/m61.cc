@@ -32,6 +32,16 @@ struct meta_data {
   meta_data *prev_ptr;
   meta_data *next_ptr;
 };
+
+struct loc {
+  const char *file;
+  long line;
+};
+unsigned long long byte_counters[6];
+unsigned long long alloc_freqs[6];
+loc count_locs[6];
+loc freq_locs[6];
+
 meta_data first_node = {0, 0, nullptr, 0, nullptr, nullptr};
 meta_data *inter_ptr = &first_node;
 // size constants
@@ -85,6 +95,53 @@ void *m61_malloc(size_t sz, const char *file, long line) {
     if (addr < heap_min_track) {
       heap_min_track = addr;
     }
+
+    bool fnd_cnt = false;
+    bool fnd_freq = false;
+    int zero_cnt = -1;
+    int zero_frq = -1;
+    unsigned long long min_size = sz;
+    int min_counter = -1;
+    for (int i = 0; i < 6; ++i) {
+      if (byte_counters[i] == 0) {
+        zero_cnt = i;
+      } else {
+        if (count_locs[i].file == file && count_locs[i].line == line) {
+          byte_counters[i] += sz;
+          fnd_cnt = true;
+          break;
+        }
+        if (min_size > byte_counters[i]) {
+          min_size = byte_counters[i];
+          min_counter = i;
+        }
+      }
+    }
+    for (int i = 0; i < 6; ++i) {
+      if (alloc_freqs[i] == 0) {
+        zero_frq = i;
+      } else {
+        if (freq_locs[i].file == file && freq_locs[i].line == line) {
+          alloc_freqs[i] += 1;
+          fnd_freq = true;
+          break;
+        }
+      }
+    }
+    if (!fnd_cnt) {
+      if (zero_cnt != -1) {
+        count_locs[zero_cnt] = {file, line};
+        byte_counters[zero_cnt] = sz;
+      } else {
+        for (int i = 0; i < 6; ++i) {
+          byte_counters[i] -= min_size;
+          if (min_counter == i) {
+            byte_counters[i] = sz - min_size;
+            count_locs[i] = {file, line};
+          }
+        }
+      }
+    }
     return payload_ptr;
   } else {
     ++fail_counter;
@@ -108,10 +165,10 @@ void m61_free(void *ptr, const char *file, long line) {
               file, line, ptr);
       abort();
     } else {
-      meta_data *header = (meta_data *)(ptr_addr - meta_data_sz);
+      meta_data *header_ptr = (meta_data *)(ptr_addr - meta_data_sz);
 
-      if (ptr_addr % 16 != 0 || (header->status_tag != magic_header &&
-                                 header->status_tag != magic_free)) {
+      if (ptr_addr % 16 != 0 || (header_ptr->status_tag != magic_header &&
+                                 header_ptr->status_tag != magic_free)) {
         fprintf(
             stderr,
             "MEMORY BUG: %s:%lu: invalid free of pointer %p, not allocated\n",
@@ -130,35 +187,35 @@ void m61_free(void *ptr, const char *file, long line) {
         }
         abort();
       } else {
-        if (header->status_tag == magic_free) {
+        if (header_ptr->status_tag == magic_free) {
           fprintf(stderr,
                   "MEMORY BUG: %s:%lu: invalid free of pointer %p, double free",
                   file, line, ptr);
           abort();
         }
       }
-      if (header->prev_ptr->next_ptr != header ||
-          header->next_ptr->prev_ptr != header) {
+      if (header_ptr->prev_ptr->next_ptr != header_ptr ||
+          header_ptr->next_ptr->prev_ptr != header_ptr) {
         fprintf(stderr,
                 "MEMORY BUG: %s: %lu: invalid free of pointer %p, not "
                 "allocated\n",
                 file, line, ptr);
         abort();
       }
-      void *footer_ptr = (void *)(ptr_addr + header->alloc_size);
+      void *footer_ptr = (void *)(ptr_addr + header_ptr->alloc_size);
       if (memcmp(footer_ptr, &magic_footer, magic_footer_sz) != 0) {
         fprintf(stderr,
                 "MEMORY BUG:  %s:%lu: detected wild write during free of "
                 "pointer %p\n",
                 file, line, ptr);
         abort();
-      } else if (header->status_tag != magic_free) {
-        header->status_tag = magic_free;
+      } else if (header_ptr->status_tag != magic_free) {
+        header_ptr->status_tag = magic_free;
         ++free_counter;
-        active_size_acc -= header->alloc_size;
-        header->prev_ptr->next_ptr = header->next_ptr;
-        header->next_ptr->prev_ptr = header->prev_ptr;
-        base_free((void *)header);
+        active_size_acc -= header_ptr->alloc_size;
+        header_ptr->prev_ptr->next_ptr = header_ptr->next_ptr;
+        header_ptr->next_ptr->prev_ptr = header_ptr->prev_ptr;
+        base_free((void *)header_ptr);
       }
     }
   }
@@ -233,4 +290,43 @@ void m61_print_leak_report() {
 
 void m61_print_heavy_hitter_report() {
   // Your heavy-hitters code here
+  for (int i = 6; i > 0; --i) {
+    int cnt_curr_max_idx = 0;
+    for (int j = 0; j < i; ++j) {
+      if (byte_counters[cnt_curr_max_idx] < byte_counters[j]) {
+        cnt_curr_max_idx = j;
+      }
+    }
+    if (count_locs[cnt_curr_max_idx].file != nullptr) {
+      double percent =
+          (double)byte_counters[cnt_curr_max_idx] / total_size_acc * 100;
+      fprintf(stdout,
+              "HEAVY HITTER: %s:%lu: %llu bytes (approx %.2f%%) of %lu bytes\n",
+              count_locs[cnt_curr_max_idx].file,
+              count_locs[cnt_curr_max_idx].line,
+              byte_counters[cnt_curr_max_idx], percent, total_size_acc);
+    }
+    byte_counters[cnt_curr_max_idx] = byte_counters[i - 1];
+    count_locs[cnt_curr_max_idx] = count_locs[i - 1];
+  }
+  for (int i = 6; i > 0; --i) {
+    int freq_curr_max_idx = 0;
+    for (int j = 0; j < i; ++j) {
+      if (alloc_freqs[freq_curr_max_idx] < alloc_freqs[j]) {
+        freq_curr_max_idx = j;
+      }
+    }
+    if (freq_locs[freq_curr_max_idx].file != nullptr) {
+      double percent =
+          (double)alloc_freqs[freq_curr_max_idx] / malloc_counter * 100;
+      fprintf(stdout,
+              "HEAVY HITTER: %s:%li: %llu allocations (approx %.2f%%) of %lu "
+              "allocations\n",
+              freq_locs[freq_curr_max_idx].file,
+              freq_locs[freq_curr_max_idx].line, alloc_freqs[freq_curr_max_idx],
+              percent, malloc_counter);
+    }
+    alloc_freqs[freq_curr_max_idx] = alloc_freqs[i - 1];
+    freq_locs[freq_curr_max_idx] = freq_locs[i - 1];
+  }
 }
