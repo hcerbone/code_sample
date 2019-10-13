@@ -1,0 +1,440 @@
+/lib64/ld-linux-x86-64.so.2
+Y	t_
+libstdc++.so.6
+__gmon_start__
+_ITM_deregisterTMCloneTable
+_ITM_registerTMCloneTable
+libm.so.6
+libgcc_s.so.1
+libc.so.6
+socket
+strcpy
+sprintf
+fopen
+connect
+signal
+puts
+stdin
+_exit
+__assert_fail
+isspace
+strtol
+fgets
+strlen
+__errno_location
+read
+memcmp
+stdout
+getenv
+sscanf
+stderr
+alarm
+gethostbyname
+bcopy
+close
+fprintf
+sleep
+setvbuf
+strcmp
+__libc_start_main
+write
+__cxa_atexit
+GLIBC_2.2.5
+%z' 
+%r' 
+%j' 
+%b' 
+%Z' 
+%R' 
+%J' 
+%B' 
+%:' 
+%2' 
+%*' 
+%"' 
+ATUSI
+[]A\
+AVAUATUSH
+<$ u.H
+[]A\A]A^
+AUATUSH
+t}HcD$
+[]A\A]
+t$8A
+L$ H
+D$(H
+89:|
+=J" 
+=S  
+=0  
+w@Hc
+ATUSH
+-*  
+[]A\
+AVAUATUSI
+[]A\A]A^
+AWAVAUATUSH
+< tE
+D$0H
+[]A\A]A^A_
+D$(H
+L$ H
+AVAUATUSI
+[]A\A]A^
+ATAUA
+[]A\A]A^A_
+%s: Error: Couldn't open %s
+Usage: %s [FILE]
+Step carefully.
+PHASE 1 DEFUSED.
+PHASE 2 DEFUSED.
+PHASE 3 DEFUSED.
+PHASE 4 DEFUSED.
+PHASE 5 DEFUSED.
+PHASE 6 DEFUSED.
+THE UBIQUITOUS AI: Welcome to your twisted, high-tech near-future.
+Yorkie: I said I am not much of a dancer. Kelly: Like a frightened horse on a frozen lake back there.
+Wow! You've defused the secret stage!
+durian
+Not enough space in the arena
+%s %s %s %s
+CosmoTheDog
+Well...
+ OK. :)
+Invalid phase%s
+Initialization error:
+support.cc
+defused
+exploded
+%d:%s:%d:%s
+BOOM!!!
+The bomb has blown up.
+%d %d %d %d %d %d
+Error: Premature EOF on stdin
+GRADE_BOMB
+Error: Input line too long
+***truncated***
+Curses, you've found the secret phase!
+But finding it and solving it are quite different...
+Congratulations! You defused the bomb!
+Your instructor has been notified and will verify your solution.
+So you think you can stop the bomb with Ctrl-C, do you?
+ndefused >= 0 && ndefused < 20
+ERROR: Input string is too large.
+Your instructor has been notified.
+char* skip()
+Program timed out after %d seconds
+Error: Client unable to create socket
+Error: DNS is unable to resolve server address
+Error: Unable to connect to the server
+Error: Result string too large. Increase SUBMITR_MAXBUF
+Error: Client unable to write to the server
+Error: Client unable to read first header from server
+Error: HTTP request failed with error %d: %s
+Error: Client unable to read headers from server
+Error: Client unable to read status message from server
+Error: Result string contains an illegal or unprintable character.
+GET /%s/submitr.pl/?userid=%s&userpwd=%s&lab=%s&result=%s&submit=submit HTTP/1.0
+Error: Unable to connect to server %s
+%%%02X
+%s %d %[a-zA-z ]
+cs61.seas.harvard.edu
+AUTORESULT_STRING=%s
+f18-pset2
+csapp
+;*3$"
+nVl4d3htR5sogS94Y06V
+hcerbone
+GCC: (GNU) 4.8.5 20150623 (Red Hat 4.8.5-28)
+GCC: (GNU) 7.3.0
+$div
+$abs
+/usr/lib/gcc/x86_64-amazon-linux/7.3.0/include
+/usr/include/bits
+/usr/include
+/usr/include/c++/7.3.0
+/usr/include/c++/7.3.0/x86_64-amazon-linux/bits
+bomb.cc
+stddef.h
+types.h
+stdio.h
+libio.h
+sys_errlist.h
+cstdlib
+c++config.h
+stdlib.h
+stdlib-float.h
+stdlib.h
+support.hh
+phases.hh
+string.h
+<built-in>
+printf
+__off_t
+_IO_read_ptr
+_chain
+quot
+strcmp
+size_t
+__cxx11
+lldiv
+_shortbuf
+_GLOBAL__sub_I_infile
+__static_initialization_and_destruction_0
+_IO_2_1_stderr_
+_IO_buf_base
+wcstombs
+7lldiv_t
+_Z13phase_defusedv
+long long unsigned int
+read_line
+atexit
+long long int
+mblen
+phase_defused
+/home/kohler/cs61-psets-for-bomb/bomb/src
+_IO_read_end
+_fileno
+strtof
+strtol
+_flags
+_IO_buf_end
+_cur_column
+_sys_errlist
+GNU C++14 7.3.0 -mtune=generic -march=x86-64 -ggdb -O1 -fno-optimize-strlen -fno-builtin-strcpy -fno-builtin-strlen -fno-builtin-strcmp -fno-builtin-strchr -fno-builtin-memcmp
+_old_offset
+_Z15initialize_bombv
+_Z7phase_4Pc
+mbtowc
+qsort
+__initialize_p
+_Z7phase_5Pc
+initialize_bomb
+_IO_marker
+stdin
+_IO_FILE_plus
+_IO_write_ptr
+_sbuf
+5div_t
+short unsigned int
+strtod
+bsearch
+_IO_save_base
+wchar_t
+_lock
+_Z7phase_3Pc
+_flags2
+_mode
+__builtin_puts
+stdout
+_Z9read_linev
+_IO_2_1_stdin_
+getenv
+long double
+_IO_write_end
+at_quick_exit
+_IO_lock_t
+_IO_FILE
+float
+fopen
+_pos
+_markers
+mbstowcs
+srand
+_Z7phase_2Pc
+atof
+atoi
+atol
+unsigned char
+6ldiv_t
+short int
+strtold
+_sys_nerr
+strtoll
+_vtable_offset
+_IO_2_1_stdout_
+wctomb
+input
+atoll
+_ZN9__gnu_cxx3divExx
+argv
+strtoull
+_Z7phase_1Pc
+bomb.cc
+_next
+__off64_t
+_IO_read_base
+_IO_save_end
+__pad1
+__pad2
+__pad3
+__pad4
+__pad5
+_unused2
+stderr
+strtoul
+phase_1
+phase_2
+phase_3
+phase_4
+phase_5
+phase_6
+_Z7phase_6Pc
+_IO_backup_base
+system
+__compar_fn_t
+argc
+__priority
+main
+_IO_write_base
+__gnu_cxx
+.symtab
+.strtab
+.shstrtab
+.interp
+.note.ABI-tag
+.note.gnu.build-id
+.gnu.hash
+.dynsym
+.dynstr
+.gnu.version
+.gnu.version_r
+.rela.dyn
+.rela.plt
+.init
+.text
+.fini
+.rodata
+.eh_frame_hdr
+.eh_frame
+.init_array
+.fini_array
+.dynamic
+.got
+.got.plt
+.data
+.bss
+.comment
+.debug_aranges
+.debug_info
+.debug_abbrev
+.debug_line
+.debug_str
+.debug_loc
+crtstuff.c
+deregister_tm_clones
+register_tm_clones
+__do_global_dtors_aux
+completed.6940
+__do_global_dtors_aux_fini_array_entry
+frame_dummy
+__frame_dummy_init_array_entry
+bomb.cc
+_GLOBAL__sub_I_infile
+phases.cc
+_ZL6allocp
+_ZL8allocbuf
+support.cc
+_ZL11sig_handleri
+_ZL4skipv
+_ZZL4skipvE19__PRETTY_FUNCTION__
+driverlib.cc
+_ZL13rio_readlinebP5rio_tPvm
+__FRAME_END__
+_GLOBAL_OFFSET_TABLE_
+__init_array_end
+__init_array_start
+_DYNAMIC
+data_start
+_Z12explode_bombv
+printf@@GLIBC_2.2.5
+__libc_csu_fini
+_start
+_Z16read_six_numbersPKcPi
+close@@GLIBC_2.2.5
+_Z11copy_phrasePcS_
+_Z7phase_1Pc
+gethostbyname@@GLIBC_2.2.5
+__gmon_start__
+puts@@GLIBC_2.2.5
+_Z8send_msgi
+exit@@GLIBC_2.2.5
+__assert_fail@@GLIBC_2.2.5
+bomb_id
+setvbuf@@GLIBC_2.2.5
+_fini
+_Z13phase_defusedv
+read@@GLIBC_2.2.5
+fopen@@GLIBC_2.2.5
+__libc_start_main@@GLIBC_2.2.5
+node3
+_Z4playiPKcPc
+_Z9last_wordPKc
+_exit@@GLIBC_2.2.5
+__cxa_atexit@@GLIBC_2.2.5
+_Z7submitrPKciS0_S0_S0_S0_S0_Pc
+fgets@@GLIBC_2.2.5
+_Z1ev
+_ITM_deregisterTMCloneTable
+_Z7phase_3Pc
+_IO_stdin_used
+atexit
+userid
+_Z7phase_5Pc
+strlen@@GLIBC_2.2.5
+_Z11driver_postPcS_S_iS_
+_ITM_registerTMCloneTable
+__data_start
+bcopy@@GLIBC_2.2.5
+_Z9read_linev
+_Z7phase_4Pc
+_Z15initialize_bombv
+sprintf@@GLIBC_2.2.5
+stdin@@GLIBC_2.2.5
+_Z7phase_6Pc
+sscanf@@GLIBC_2.2.5
+sleep@@GLIBC_2.2.5
+node2
+__TMC_END__
+__dso_handle
+_Z5afreePx
+strtol@@GLIBC_2.2.5
+__libc_csu_init
+input_strings
+connect@@GLIBC_2.2.5
+node6
+_Z11init_driverPc
+signal@@GLIBC_2.2.5
+socket@@GLIBC_2.2.5
+host_table
+getenv@@GLIBC_2.2.5
+alarm@@GLIBC_2.2.5
+infile
+__errno_location@@GLIBC_2.2.5
+_Z21initialize_bomb_solvev
+_Z12init_timeouti
+__bss_start
+_Z12secret_phasev
+_Z13invalid_phasePc
+_Z10blank_linePc
+strcmp@@GLIBC_2.2.5
+ndefused
+strcpy@@GLIBC_2.2.5
+node1
+_Z15sigalrm_handleri
+memcmp@@GLIBC_2.2.5
+_end
+isspace@@GLIBC_2.2.5
+node5
+_Z7phase_2Pc
+stderr@@GLIBC_2.2.5
+_Z4fun7P14treeNodeStructi
+_edata
+fprintf@@GLIBC_2.2.5
+write@@GLIBC_2.2.5
+user_password
+stdout@@GLIBC_2.2.5
+node4
+main
+_init
+_Z5alloci
