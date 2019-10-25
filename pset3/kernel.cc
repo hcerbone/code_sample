@@ -66,14 +66,16 @@ void kernel(const char* command) {
 
     // (re-)initialize kernel page table
     for (vmiter it(kernel_pagetable);
-         it.va() < MEMSIZE_PHYSICAL;
-         it += PAGESIZE) {
-        if (it.va() != 0) {
-            it.map(it.va(), PTE_P | PTE_W | PTE_U);
-        } else {
-            // nullptr is inaccessible even to the kernel
-            it.map(it.va(), 0);
-        }
+        it.va() < MEMSIZE_PHYSICAL;
+        it += PAGESIZE) {
+       if (it.va() >= PROC_START_ADDR
+           || it.va() == CONSOLE_ADDR) {
+           it.map(it.va(), PTE_P | PTE_W | PTE_U);
+       } else if (it.va() != 0) {
+           it.map(it.va(), PTE_P | PTE_W);
+       } else {
+           it.map(it.va(), 0);
+       }
     }
 
     // set up process descriptors
@@ -110,12 +112,13 @@ void kernel(const char* command) {
 //    The handout code returns the next allocatable free page it can find.
 //    It never reuses pages or supports freeing memory (you'll change that).
 
-static uintptr_t next_alloc_pa;
 
 void* kalloc(size_t sz) {
     if (sz > PAGESIZE) {
         return nullptr;
     }
+
+    uintptr_t next_alloc_pa = 0;
 
     while (next_alloc_pa < MEMSIZE_PHYSICAL) {
         uintptr_t pa = next_alloc_pa;
@@ -137,8 +140,11 @@ void* kalloc(size_t sz) {
 //    If `kptr == nullptr` does nothing.
 
 void kfree(void* kptr) {
-    (void) kptr;
-    assert(false /* your code here */);
+    if(kptr){
+        pages[(uintptr_t) kptr / PAGESIZE].refcount -= 1;
+        if(pages[(uintptr_t) kptr / PAGESIZE].refcount == 0)
+            memset(kptr, 0xCC, PAGESIZE);
+    }
 }
 
 
@@ -148,41 +154,68 @@ void kfree(void* kptr) {
 //    %rip and %rsp, gives it a stack page, and marks it as runnable.
 
 void process_setup(pid_t pid, const char* program_name) {
+    log_printf("Setting up process %d...\n", pid);
     init_process(&ptable[pid], 0);
 
-    // initialize process page table
-    ptable[pid].pagetable = kernel_pagetable;
+    // initialize processs page table
+    log_printf("Initializing page table...\n");
+    x86_64_pagetable* proc_pt = (x86_64_pagetable*) kalloc(PAGESIZE);
+    memset(proc_pt, 0, PAGESIZE);
+    assert(proc_pt);
+    ptable[pid].pagetable = proc_pt;
+
+    //copy mappings from kernel_pagetable
+    vmiter proc_it = vmiter(proc_pt, 0);
+    for(vmiter k_it(kernel_pagetable);
+        k_it.va() < PROC_START_ADDR;
+        k_it += PAGESIZE){
+            proc_it.map(k_it.pa(), k_it.perm());
+            proc_it += PAGESIZE;
+    }
+    log_printf("Page table initialized\n");
 
     // load the program
     program_loader loader(program_name);
 
     // allocate and map all memory
     for (loader.reset(); loader.present(); ++loader) {
-        for (uintptr_t a = round_down(loader.va(), PAGESIZE);
-             a < loader.va() + loader.size();
-             a += PAGESIZE) {
-            assert(!pages[a / PAGESIZE].used());
-            pages[a / PAGESIZE].refcount = 1;
-        }
+        bool isWritable = loader.writable();
+        for(proc_it.find(round_down(loader.va(), PAGESIZE));
+            proc_it.va() < loader.va() + loader.size();
+            proc_it += PAGESIZE){
+                void* pa = kalloc(PAGESIZE);
+                memset(pa, 0, PAGESIZE);
+                if(isWritable){
+                    proc_it.map(pa, PTE_P | PTE_W | PTE_U);
+                } else{
+                    proc_it.map(pa, PTE_P | PTE_U);
+                }
+            }
     }
 
     // copy instructions and data into place
     for (loader.reset(); loader.present(); ++loader) {
-        memset((void*) loader.va(), 0, loader.size());
-        memcpy((void*) loader.va(), loader.data(), loader.data_size());
+        proc_it.find(loader.va());
+        memset((void*) proc_it.pa(), 0, loader.size());
+        memcpy((void*) proc_it.pa(), loader.data(), loader.data_size());
     }
+    log_printf("Code and data loaded...\n");
 
     // mark entry point
     ptable[pid].regs.reg_rip = loader.entry();
 
     // allocate stack
-    uintptr_t stack_addr = PROC_START_ADDR + PROC_SIZE * pid - PAGESIZE;
-    assert(!pages[stack_addr / PAGESIZE].used());
-    pages[stack_addr / PAGESIZE].refcount = 1;
+    uintptr_t stack_addr = MEMSIZE_VIRTUAL - PAGESIZE;
+    proc_it.find(stack_addr);
+    void* stack_pa = kalloc(PAGESIZE);
+    memset(stack_pa, 0, PAGESIZE);
+    proc_it.map(stack_pa, PTE_P | PTE_W | PTE_U);
     ptable[pid].regs.reg_rsp = stack_addr + PAGESIZE;
+    log_printf("Stack was allocated\n");
 
     // mark process as runnable
     ptable[pid].state = P_RUNNABLE;
+    log_printf("Success\n");
 }
 
 
@@ -272,6 +305,15 @@ void exception(regstate* regs) {
 
 int syscall_page_alloc(uintptr_t addr);
 
+pid_t sys_fork();
+
+void sys_exit();
+void exit_proc(pid_t pid);
+
+int map_check();
+
+
+
 uintptr_t syscall(regstate* regs) {
     // Copy the saved registers into the `current` process descriptor.
     current->regs = *regs;
@@ -307,6 +349,13 @@ uintptr_t syscall(regstate* regs) {
     case SYSCALL_PAGE_ALLOC:
         return syscall_page_alloc(current->regs.reg_rdi);
 
+    case SYSCALL_FORK:
+        return sys_fork();
+
+    case SYSCALL_EXIT:
+        sys_exit();
+        schedule();
+
     default:
         panic("Unexpected system call %ld!\n", regs->reg_rax);
 
@@ -315,6 +364,17 @@ uintptr_t syscall(regstate* regs) {
     panic("Should not get here!\n");
 }
 
+// map_check(vmiter in_it, uintptr_t pa, int perm, pid_t pid)
+// Attempts to map page address and permissions to given proccess
+// if this fails, it exits the process cleanly.
+int map_check(vmiter in_it, uintptr_t pa, int perm, pid_t pid){
+    int res = in_it.try_map(pa, perm);
+    if(res == -1){
+        exit_proc(pid);
+    }
+
+    return res;
+}
 
 // syscall_page_alloc(addr)
 //    Handles the SYSCALL_PAGE_ALLOC system call. This function
@@ -322,13 +382,112 @@ uintptr_t syscall(regstate* regs) {
 //    in `u-lib.hh` (but in the handout code, it does not).
 
 int syscall_page_alloc(uintptr_t addr) {
-    assert(!pages[addr / PAGESIZE].used());
-    pages[addr / PAGESIZE].refcount = 1;
-    memset((void*) addr, 0, PAGESIZE);
+    if(addr < PROC_START_ADDR || addr >= MEMSIZE_VIRTUAL || addr % PAGESIZE != 0){
+        return -1;
+    }
+    void* alloc_pa = kalloc(PAGESIZE);
+    if(!alloc_pa){
+        return -1;
+    }
+
+    memset(alloc_pa, 0, PAGESIZE);
+    x86_64_pagetable* process_pt = ptable[current->pid].pagetable;
+    vmiter proc_it = vmiter(process_pt, addr);
+    proc_it.map(alloc_pa, PTE_P | PTE_W | PTE_U);
+
     return 0;
 }
 
+// fork
+// starts a new process as a copy of an existing process
+// returns 0 to the child process, process id of child to parent
 
+pid_t sys_fork()
+{
+    pid_t pid = 1;
+    while(pid < NPROC && ptable[pid].state != P_FREE){
+        ++pid;
+    }
+    if(pid == NPROC){
+        return -1;
+    }
+
+    init_process(&ptable[pid], 0);
+
+    x86_64_pagetable* child_pt = (x86_64_pagetable*) kalloc(PAGESIZE);
+    x86_64_pagetable* parent_pt = current->pagetable;
+    ptable[pid].pagetable = child_pt;
+
+    if(!child_pt){
+        return -1;
+    }
+
+    memset(child_pt, 0, PAGESIZE);
+    vmiter child_it = vmiter(child_pt);
+
+    for(vmiter k_it(kernel_pagetable);
+        k_it.va() < PROC_START_ADDR;
+        k_it += PAGESIZE) {
+            if(map_check(child_it, k_it.pa(), k_it.perm(), pid)){
+                return -1;
+            }
+            child_it += PAGESIZE;
+        }
+
+    child_it = vmiter(child_pt, PROC_START_ADDR);
+    for(vmiter parent_it = vmiter(parent_pt, PROC_START_ADDR);
+        parent_it.va() < MEMSIZE_VIRTUAL;
+        parent_it += PAGESIZE, child_it += PAGESIZE){
+
+            if(parent_it.writable() && parent_it.user()){
+                void* child_pa = kalloc(PAGESIZE);
+                if(!child_pa){
+                    exit_proc(pid);
+                    return -1;
+                }
+                memcpy(child_pa, (void*) parent_it.pa(), PAGESIZE);
+                if(map_check(child_it, (uintptr_t) child_pa, parent_it.perm(), pid)){
+                    kfree(child_pa);
+                    return -1;
+                }
+            } else if(parent_it.present()){
+                if(map_check(child_it, parent_it.pa(), parent_it.perm(), pid)){
+                    return -1;
+                }
+                pages[parent_it.pa() / PAGESIZE].refcount += 1;
+            }
+    }
+
+    ptable[pid].regs = current->regs;
+    ptable[pid].regs.reg_rax = 0;
+
+    ptable[pid].state = P_RUNNABLE;
+
+    return pid;
+
+}
+
+void exit_proc(pid_t pid){
+    x86_64_pagetable* proc_pt = ptable[pid].pagetable;
+
+    if(proc_pt) {
+        for(vmiter it(proc_pt, PROC_START_ADDR);
+            it.va() <= MEMSIZE_VIRTUAL;
+            it += PAGESIZE){
+                if(it.present())
+                    kfree((void*) it.pa());
+            }
+        for(ptiter it(proc_pt); it.active(); it.next()){
+            kfree((void*) it.pa());
+        }
+        kfree((void*) proc_pt);
+    }
+    ptable[pid].state = P_FREE;
+}
+
+void sys_exit(){
+    exit_proc(current -> pid);
+}
 // schedule
 //    Pick the next process to run and then run it.
 //    If there are no runnable processes, spins forever.
