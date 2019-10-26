@@ -87,7 +87,16 @@ inline pid_t sys_fork() {
     while (true) {
     }
 }
+//sys_kill(pid)
+// Kill allows a process to cill another process identified by the input pid.
+inline void sys_kill(pid_t pid) {
+	make_syscall(SYSCALL_FORK);
+	make_syscall(SYSCALL_PANIC, (uintptr_t) "sys_kill should not return!");
 
+	// should never get here
+	while (true) {
+	}
+}
 // sys_panic(msg)
 //    Panic.
 [[noreturn]] inline void sys_panic(const char* msg) {

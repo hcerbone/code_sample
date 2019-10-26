@@ -84,8 +84,8 @@ void kernel(const char* command) {
         ptable[i].state = P_FREE;
     }
     if (command && program_loader(command).present()) {
-        process_setup(1, command);
-    } else {
+		process_setup(1, command);
+  } else {
         process_setup(1, "allocator");
         process_setup(2, "allocator2");
         process_setup(3, "allocator3");
@@ -310,6 +310,8 @@ pid_t sys_fork();
 void sys_exit();
 void exit_proc(pid_t pid);
 
+void sys_kill(pid_t pid);
+
 int map_check();
 
 
@@ -354,6 +356,10 @@ uintptr_t syscall(regstate* regs) {
 
     case SYSCALL_EXIT:
         sys_exit();
+        schedule();
+
+    case SYSCALL_KILL:
+        sys_kill(current->regs.reg_rdi);
         schedule();
 
     default:
@@ -468,6 +474,9 @@ pid_t sys_fork()
 }
 
 void exit_proc(pid_t pid){
+    if(pid <= 0 || pid >= NPROC){
+        return;
+    }
     x86_64_pagetable* proc_pt = ptable[pid].pagetable;
 
     if(proc_pt) {
@@ -487,6 +496,10 @@ void exit_proc(pid_t pid){
 
 void sys_exit(){
     exit_proc(current -> pid);
+}
+
+void sys_kill(pid_t pid){
+    exit_proc(pid);
 }
 // schedule
 //    Pick the next process to run and then run it.

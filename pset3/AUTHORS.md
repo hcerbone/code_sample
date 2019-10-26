@@ -3,14 +3,16 @@ Author and collaborators
 
 Primary student
 ---------------
-(Your name.)
+Henry Cerbone
 
 
 Collaborators
 -------------
-(List any other collaborators and describe help you got from other students
-in the class.)
+Serina Hu
 
+Grading Notes
+-------------
+Implemented kill for extra credit.
 
 Citations
 ---------

@@ -47,11 +47,11 @@ KERNEL_LINKER_FILES = link/kernel.ld link/shared.ld
 
 PROCESS_BINARIES = $(OBJDIR)/p-allocator $(OBJDIR)/p-allocator2 \
 	$(OBJDIR)/p-allocator3 $(OBJDIR)/p-allocator4 \
-	$(OBJDIR)/p-fork $(OBJDIR)/p-forkexit
+	$(OBJDIR)/p-fork $(OBJDIR)/p-forkexit $(OBJDIR)/p-kill
 PROCESS_LIB_OBJS = $(OBJDIR)/lib.uo $(OBJDIR)/u-lib.uo
 ALLOCATOR_OBJS = $(OBJDIR)/p-allocator.uo $(PROCESS_LIB_OBJS)
 PROCESS_OBJS = $(OBJDIR)/p-allocator.uo $(OBJDIR)/p-fork.uo \
-	$(OBJDIR)/p-forkexit.uo $(PROCESS_LIB_OBJS)
+	$(OBJDIR)/p-forkexit.uo $(PROCESS_LIB_OBJS) $(OBJDIR)/p-kill.uo
 PROCESS_LINKER_FILES = link/process.ld link/shared.ld
 
 
