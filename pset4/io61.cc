@@ -9,16 +9,15 @@
 
 // io61_file
 //    Data structure for io61 file wrappers. Add your own stuff.
-
 struct io61_file {
   int fd;
   int mode;
-  static constexpr off_t bufsize = 4096;
+  static constexpr off_t bufsize = 8192;
   char cbuf[bufsize];
   off_t tag;
-  off_t beg_tag;
-  off_t end_tag;
-  off_t pos_tag;
+  off_t beg_tag; // start of buffer
+  off_t end_tag; // end of buffer
+  off_t pos_tag; // current position in buffer
 };
 
 // io61_fdopen(fd, mode)
@@ -79,19 +78,25 @@ int io61_readc(io61_file *f) {
 //    were read.
 
 ssize_t io61_read(io61_file *f, char *buf, size_t sz) {
+  // tracking variables
   size_t bytes_read = 0;
   size_t req_bytes = 0;
+
   while (bytes_read < sz) {
+    // fill the buffer if we are outside of it
     if (f->pos_tag >= f->end_tag) {
       io61_fill(f);
+      // if we are still out we are done
       if (f->pos_tag >= f->end_tag) {
         break;
       }
     }
+    // calculate amount of bytes remaining to be read
     req_bytes = f->end_tag - f->pos_tag;
     if (sz - bytes_read < req_bytes) {
       req_bytes = sz - bytes_read;
     }
+    // read and update counters
     memcpy(&buf[bytes_read], &f->cbuf[f->pos_tag - f->beg_tag], req_bytes);
     f->pos_tag += req_bytes;
     bytes_read += req_bytes;
@@ -115,6 +120,7 @@ ssize_t io61_read(io61_file *f, char *buf, size_t sz) {
 //    -1 on error.
 
 int io61_writec(io61_file *f, int ch) {
+  // if we are over our buffer flush
   if (f->end_tag == f->beg_tag + f->bufsize) {
     io61_flush(f);
   }
@@ -130,17 +136,23 @@ int io61_writec(io61_file *f, int ch) {
 //    an error occurred before any characters were written.
 
 ssize_t io61_write(io61_file *f, const char *buf, size_t sz) {
+  // keep track of how many bytes we have written and need to write
   size_t bytes_written = 0;
   size_t rec_bytes = 0;
+
+  // loop over bytes buffer by buffer
   while (bytes_written < sz) {
     if (f->end_tag == f->beg_tag + f->bufsize) {
-      io61_flush(f);
+      io61_flush(f); // flush buffer if full
     }
+    // calculate bytes still needing to be written
     rec_bytes = f->bufsize - (f->pos_tag - f->beg_tag);
     if (sz - bytes_written < rec_bytes) {
       rec_bytes = sz - bytes_written;
     }
     memcpy(&f->cbuf[f->pos_tag - f->beg_tag], &buf[bytes_written], rec_bytes);
+
+    // update tracking counters
     f->pos_tag += rec_bytes;
     f->end_tag += rec_bytes;
     bytes_written += rec_bytes;
@@ -174,10 +186,12 @@ int io61_seek(io61_file *f, off_t pos) {
   if (f->mode == O_WRONLY) {
     io61_flush(f);
   }
+  // if the position is within the current file buffer then we are done
   if (pos < f->end_tag && pos >= f->beg_tag) {
     f->pos_tag = pos;
     return 0;
   }
+  // otherwise need to seek
   off_t new_pos = pos;
   if (f->mode == O_RDONLY) {
     new_pos = (pos / f->bufsize) * f->bufsize;
@@ -190,6 +204,8 @@ int io61_seek(io61_file *f, off_t pos) {
     f->beg_tag = f->end_tag = pos;
   }
   f->pos_tag = pos;
+
+  // check for success and return
   if (r == new_pos) {
     return 0;
   } else {
