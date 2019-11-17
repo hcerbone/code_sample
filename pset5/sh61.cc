@@ -1,40 +1,34 @@
 #include "sh61.hh"
-#include <cstring>
 #include <cerrno>
-#include <vector>
+#include <cstring>
 #include <sys/stat.h>
 #include <sys/wait.h>
-
+#include <vector>
 
 // struct command
 //    Data structure describing a command. Add your own stuff.
 
 struct command {
-    std::vector<std::string> args;
-    pid_t pid;      // process ID running this command, -1 if none
+  std::vector<std::string> args;
+  pid_t pid; // process ID running this command, -1 if none
+  bool is_background;
+  command *next_cmd;
+  command();
+  ~command();
 
-    command();
-    ~command();
-
-    pid_t make_child(pid_t pgid);
+  pid_t make_child(pid_t pgid);
 };
-
 
 // command::command()
 //    This constructor function initializes a `command` structure. You may
 //    add stuff to it as you grow the command structure.
 
-command::command() {
-    this->pid = -1;
-}
-
+command::command() { this->pid = -1; }
 
 // command::~command()
 //    This destructor function is called to delete a command.
 
-command::~command() {
-}
-
+command::~command() {}
 
 // COMMAND EXECUTION
 
@@ -55,14 +49,24 @@ command::~command() {
 //       this will require TWO calls to `setpgid`.
 
 pid_t command::make_child(pid_t pgid) {
-    assert(this->args.size() > 0);
-    (void) pgid; // You won’t need `pgid` until part 8.
-    // Your code here!
+  assert(this->args.size() > 0);
+  (void)pgid; // You won’t need `pgid` until part 8.
 
-    fprintf(stderr, "command::make_child not done yet\n");
-    return pid;
+  pid_t child_id = fork();
+  assert(child_id >= 0);
+  if (child_id == 0) {
+    const char *in_args[this->args.size() + 1];
+    for (size_t i = 0; i < this->args.size(); ++i) {
+      in_args[i] = this->args[i].c_str();
+    }
+    in_args[this->args.size()] = nullptr;
+    execvp(in_args[0], (char **)in_args);
+    _exit(0);
+  } else {
+    this->pid = child_id;
+    return child_id;
+  }
 }
-
 
 // run(c)
 //    Run the command *list* starting at `c`. Initially this just calls
@@ -85,101 +89,106 @@ pid_t command::make_child(pid_t pgid) {
 //       - Call `claim_foreground(pgid)` before waiting for the pipeline.
 //       - Call `claim_foreground(0)` once the pipeline is complete.
 
-void run(command* c) {
-    c->make_child(0);
-    fprintf(stderr, "command::run not done yet\n");
+void run(command *c) {
+  int status;
+  pid_t child_id = c->make_child(0);
+  if (!c->is_background) {
+    waitpid(child_id, &status, 0);
+  }
 }
-
 
 // parse_line(s)
 //    Parse the command list in `s` and return it. Returns `nullptr` if
 //    `s` is empty (only spaces). You’ll extend it to handle more token
 //    types.
 
-command* parse_line(const char* s) {
-    int type;
-    std::string token;
-    // Your code here!
+command *parse_line(const char *s) {
+  int type;
+  std::string token;
+  // Your code here!
 
-    // build the command
-    // (The handout code treats every token as a normal command word.
-    // You'll add code to handle operators.)
-    command* c = nullptr;
-    while ((s = parse_shell_token(s, &type, &token)) != nullptr) {
-        if (!c) {
-            c = new command;
-        }
-        c->args.push_back(token);
+  // build the command
+  // (The handout code treats every token as a normal command word.
+  // You'll add code to handle operators.)
+  command *c = nullptr;
+  while ((s = parse_shell_token(s, &type, &token)) != nullptr) {
+    if (!c) {
+      c = new command;
     }
-    return c;
+    if (type == TYPE_BACKGROUND) {
+      c->is_background = true;
+    } else if (type ==) {
+      c->args.push_back(token);
+    }
+  }
+  return c;
 }
 
+int main(int argc, char *argv[]) {
+  FILE *command_file = stdin;
+  bool quiet = false;
 
-int main(int argc, char* argv[]) {
-    FILE* command_file = stdin;
-    bool quiet = false;
+  // Check for '-q' option: be quiet (print no prompts)
+  if (argc > 1 && strcmp(argv[1], "-q") == 0) {
+    quiet = true;
+    --argc, ++argv;
+  }
 
-    // Check for '-q' option: be quiet (print no prompts)
-    if (argc > 1 && strcmp(argv[1], "-q") == 0) {
-        quiet = true;
-        --argc, ++argv;
+  // Check for filename option: read commands from file
+  if (argc > 1) {
+    command_file = fopen(argv[1], "rb");
+    if (!command_file) {
+      perror(argv[1]);
+      exit(1);
+    }
+  }
+
+  // - Put the shell into the foreground
+  // - Ignore the SIGTTOU signal, which is sent when the shell is put back
+  //   into the foreground
+  claim_foreground(0);
+  set_signal_handler(SIGTTOU, SIG_IGN);
+
+  char buf[BUFSIZ];
+  int bufpos = 0;
+  bool needprompt = true;
+
+  while (!feof(command_file)) {
+    // Print the prompt at the beginning of the line
+    if (needprompt && !quiet) {
+      printf("sh61[%d]$ ", getpid());
+      fflush(stdout);
+      needprompt = false;
     }
 
-    // Check for filename option: read commands from file
-    if (argc > 1) {
-        command_file = fopen(argv[1], "rb");
-        if (!command_file) {
-            perror(argv[1]);
-            exit(1);
+    // Read a string, checking for error or EOF
+    if (fgets(&buf[bufpos], BUFSIZ - bufpos, command_file) == nullptr) {
+      if (ferror(command_file) && errno == EINTR) {
+        // ignore EINTR errors
+        clearerr(command_file);
+        buf[bufpos] = 0;
+      } else {
+        if (ferror(command_file)) {
+          perror("sh61");
         }
+        break;
+      }
     }
 
-    // - Put the shell into the foreground
-    // - Ignore the SIGTTOU signal, which is sent when the shell is put back
-    //   into the foreground
-    claim_foreground(0);
-    set_signal_handler(SIGTTOU, SIG_IGN);
-
-    char buf[BUFSIZ];
-    int bufpos = 0;
-    bool needprompt = true;
-
-    while (!feof(command_file)) {
-        // Print the prompt at the beginning of the line
-        if (needprompt && !quiet) {
-            printf("sh61[%d]$ ", getpid());
-            fflush(stdout);
-            needprompt = false;
-        }
-
-        // Read a string, checking for error or EOF
-        if (fgets(&buf[bufpos], BUFSIZ - bufpos, command_file) == nullptr) {
-            if (ferror(command_file) && errno == EINTR) {
-                // ignore EINTR errors
-                clearerr(command_file);
-                buf[bufpos] = 0;
-            } else {
-                if (ferror(command_file)) {
-                    perror("sh61");
-                }
-                break;
-            }
-        }
-
-        // If a complete command line has been provided, run it
-        bufpos = strlen(buf);
-        if (bufpos == BUFSIZ - 1 || (bufpos > 0 && buf[bufpos - 1] == '\n')) {
-            if (command* c = parse_line(buf)) {
-                run(c);
-                delete c;
-            }
-            bufpos = 0;
-            needprompt = 1;
-        }
-
-        // Handle zombie processes and/or interrupt requests
-        // Your code here!
+    // If a complete command line has been provided, run it
+    bufpos = strlen(buf);
+    if (bufpos == BUFSIZ - 1 || (bufpos > 0 && buf[bufpos - 1] == '\n')) {
+      if (command *c = parse_line(buf)) {
+        run(c);
+        delete c;
+      }
+      bufpos = 0;
+      needprompt = 1;
     }
 
-    return 0;
+    // Handle zombie processes and/or interrupt requests
+    // Your code here!
+  }
+
+  return 0;
 }
