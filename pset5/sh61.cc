@@ -91,9 +91,12 @@ pid_t command::make_child(pid_t pgid) {
 
 void run(command *c) {
   int status;
-  pid_t child_id = c->make_child(0);
-  if (!c->is_background) {
-    waitpid(child_id, &status, 0);
+  while (c != nullptr) {
+    pid_t child_id = c->make_child(0);
+    if (!c->is_background) {
+      waitpid(child_id, &status, 0);
+    }
+    c = c->next_cmd;
   }
 }
 
@@ -117,7 +120,12 @@ command *parse_line(const char *s) {
     }
     if (type == TYPE_BACKGROUND) {
       c->is_background = true;
-    } else if (type ==) {
+      c->next_cmd = parse_line(s);
+      break;
+    } else if (type == TYPE_SEQUENCE) {
+      c->next_cmd = parse_line(s);
+      break;
+    } else {
       c->args.push_back(token);
     }
   }
