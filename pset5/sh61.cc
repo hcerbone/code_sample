@@ -7,23 +7,36 @@
 
 // struct command
 //    Data structure describing a command. Add your own stuff.
-
 struct command {
   std::vector<std::string> args;
   pid_t pid; // process ID running this command, -1 if none
-  bool is_background;
   command *next_cmd;
+  bool is_or;
+  bool is_and;
   command();
   ~command();
-
   pid_t make_child(pid_t pgid);
 };
+
+struct chain {
+  command *first_command;
+  chain *next_chain;
+  void run_chain();
+  bool is_background;
+  chain();
+  ~chain();
+};
+chain::chain(){};
+chain::~chain(){};
 
 // command::command()
 //    This constructor function initializes a `command` structure. You may
 //    add stuff to it as you grow the command structure.
 
-command::command() { this->pid = -1; }
+command::command() {
+  this->pid = -1;
+  this->next_cmd = nullptr;
+}
 
 // command::~command()
 //    This destructor function is called to delete a command.
@@ -89,14 +102,47 @@ pid_t command::make_child(pid_t pgid) {
 //       - Call `claim_foreground(pgid)` before waiting for the pipeline.
 //       - Call `claim_foreground(0)` once the pipeline is complete.
 
-void run(command *c) {
+void chain::run_chain() {
+  command *curr_cmd = this->first_command;
   int status;
-  while (c != nullptr) {
-    pid_t child_id = c->make_child(0);
-    if (!c->is_background) {
-      waitpid(child_id, &status, 0);
+  while (curr_cmd != nullptr) {
+    pid_t child_id = curr_cmd->make_child(0);
+    waitpid(child_id, &status, 0);
+    if (WIFEXITED(status)) {
+      if (WEXITSTATUS(status) == 0) {
+        while (curr_cmd != nullptr && curr_cmd->is_or) {
+          curr_cmd = curr_cmd->next_cmd;
+        }
+        if (curr_cmd != nullptr) {
+          curr_cmd = curr_cmd->next_cmd;
+        }
+      } else {
+        while (curr_cmd != nullptr && curr_cmd->is_and) {
+          curr_cmd = curr_cmd->next_cmd;
+        }
+        if (curr_cmd != nullptr) {
+          curr_cmd = curr_cmd->next_cmd;
+        }
+      }
+    } else {
+      curr_cmd = curr_cmd->next_cmd;
     }
-    c = c->next_cmd;
+  }
+}
+
+void run(chain *curr_chain) {
+  while (curr_chain != nullptr) {
+    if (curr_chain->is_background) {
+      pid_t child_pid = fork();
+      assert(child_pid >= 0);
+      if (child_pid == 0) {
+        curr_chain->run_chain();
+        _exit(0);
+      }
+    } else {
+      curr_chain->run_chain();
+    }
+    curr_chain = curr_chain->next_chain;
   }
 }
 
@@ -105,7 +151,7 @@ void run(command *c) {
 //    `s` is empty (only spaces). You’ll extend it to handle more token
 //    types.
 
-command *parse_line(const char *s) {
+chain *parse_line(const char *s) {
   int type;
   std::string token;
   // Your code here!
@@ -113,20 +159,49 @@ command *parse_line(const char *s) {
   // build the command
   // (The handout code treats every token as a normal command word.
   // You'll add code to handle operators.)
-  command *c = nullptr;
+  chain *c = nullptr;
+  command *curr_cmd = nullptr;
+  chain *curr_chain = nullptr;
+  bool new_chain = false;
   while ((s = parse_shell_token(s, &type, &token)) != nullptr) {
     if (!c) {
-      c = new command;
+      c = new chain;
+      c->first_command = new command;
+      curr_chain = c;
+      curr_cmd = c->first_command;
     }
-    if (type == TYPE_BACKGROUND) {
-      c->is_background = true;
-      c->next_cmd = parse_line(s);
+    if (new_chain) {
+      new_chain = false;
+      // fprintf(stderr, "HERE\n");
+      curr_chain->next_chain = new chain;
+      curr_chain = curr_chain->next_chain;
+      curr_chain->first_command = new command;
+      curr_cmd = curr_chain->first_command;
+    }
+    switch (type) {
+    case TYPE_NORMAL:
+      curr_cmd->args.push_back(token);
       break;
-    } else if (type == TYPE_SEQUENCE) {
-      c->next_cmd = parse_line(s);
+    case TYPE_SEQUENCE:
+      curr_chain->is_background = false;
+      new_chain = true;
       break;
-    } else {
-      c->args.push_back(token);
+    case TYPE_BACKGROUND:
+      curr_chain->is_background = true;
+      new_chain = true;
+      break;
+    case TYPE_OR:
+      curr_cmd->is_or = true;
+      curr_cmd->next_cmd = new command;
+      curr_cmd = curr_cmd->next_cmd;
+      break;
+    case TYPE_AND:
+      curr_cmd->is_and = true;
+      curr_cmd->next_cmd = new command;
+      curr_cmd = curr_cmd->next_cmd;
+      break;
+    default:
+      curr_cmd->args.push_back(token);
     }
   }
   return c;
@@ -186,7 +261,7 @@ int main(int argc, char *argv[]) {
     // If a complete command line has been provided, run it
     bufpos = strlen(buf);
     if (bufpos == BUFSIZ - 1 || (bufpos > 0 && buf[bufpos - 1] == '\n')) {
-      if (command *c = parse_line(buf)) {
+      if (chain *c = parse_line(buf)) {
         run(c);
         delete c;
       }
