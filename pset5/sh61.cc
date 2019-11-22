@@ -85,6 +85,7 @@ chain::~chain() {
 //       this will require TWO calls to `setpgid`.
 
 pid_t command::make_child(pid_t pgid) {
+<<<<<<< HEAD
   assert(this->args.size() > 0);
   (void)pgid; // You won’t need `pgid` until part 8.
 
@@ -102,6 +103,14 @@ pid_t command::make_child(pid_t pgid) {
     this->pid = child_id;
     return child_id;
   }
+=======
+    assert(this->args.size() > 0);
+    (void) pgid; // You won’t need `pgid` until part 8.
+    // Your code here!
+
+    fprintf(stderr, "command::make_child not done yet\n");
+    return this->pid;
+>>>>>>> b89cbfa3313bf92bdf67369c6a8242c2c755c93e
 }
 
 // run(c)
