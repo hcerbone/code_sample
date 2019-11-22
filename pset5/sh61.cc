@@ -9,26 +9,14 @@
 //    Data structure describing a command. Add your own stuff.
 struct command {
   std::vector<std::string> args;
-  pid_t pid; // process ID running this command, -1 if none
   command *next_cmd;
+  pid_t pid; // process ID running this command, -1 if none
   bool is_or;
   bool is_and;
   command();
   ~command();
   pid_t make_child(pid_t pgid);
 };
-
-struct chain {
-  command *first_command;
-  chain *next_chain;
-  void run_chain();
-  bool is_background;
-  chain();
-  ~chain();
-};
-chain::chain(){};
-chain::~chain(){};
-
 // command::command()
 //    This constructor function initializes a `command` structure. You may
 //    add stuff to it as you grow the command structure.
@@ -36,12 +24,47 @@ chain::~chain(){};
 command::command() {
   this->pid = -1;
   this->next_cmd = nullptr;
+  this->is_or = false;
+  this->is_and = false;
 }
 
 // command::~command()
 //    This destructor function is called to delete a command.
 
-command::~command() {}
+command::~command() { delete this->next_cmd; }
+
+struct pipeline {
+  command *first_command;
+  pipeline *next_pipeline;
+  pipeline();
+  ~pipeline();
+};
+
+pipeline::pipeline() {
+  this->next_pipeline = nullptr;
+  this->first_command = nullptr;
+}
+pipeline::~pipeline() {
+  delete this->first_command;
+  delete this->next_pipeline;
+}
+struct chain {
+  chain *next_chain;
+  command *first_pipeline;
+  bool is_background;
+  chain();
+  ~chain();
+  void run_chain();
+};
+chain::chain() {
+  this->is_background = false;
+  this->next_chain = nullptr;
+  this->first_pipeline = nullptr;
+}
+chain::~chain() {
+  delete this->first_pipeline;
+  delete this->next_chain;
+}
 
 // COMMAND EXECUTION
 
@@ -166,7 +189,7 @@ chain *parse_line(const char *s) {
   while ((s = parse_shell_token(s, &type, &token)) != nullptr) {
     if (!c) {
       c = new chain;
-      c->first_command = new command;
+      c->first_pipeline = new pipeline;
       curr_chain = c;
       curr_cmd = c->first_command;
     }
@@ -199,6 +222,8 @@ chain *parse_line(const char *s) {
       curr_cmd->is_and = true;
       curr_cmd->next_cmd = new command;
       curr_cmd = curr_cmd->next_cmd;
+      break;
+    case TYPE_PIPE:
       break;
     default:
       curr_cmd->args.push_back(token);
