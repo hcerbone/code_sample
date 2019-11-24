@@ -5,14 +5,16 @@
 #include <sys/wait.h>
 #include <vector>
 
+// signal handling variables and function
 volatile sig_atomic_t got_signal;
 
 void signal_handler(int signal) {
   (void)signal;
   got_signal = -1;
 }
+
 // struct command
-//    Data structure describing a command. Add your own stuff.
+//    Data structure describing a command.
 struct command {
   std::vector<std::string> args;
   command *next_cmd;
@@ -22,6 +24,7 @@ struct command {
   ~command();
   pid_t make_child(pid_t pgid, int in_fd, int out_fd, int close_fd);
 };
+
 // command::command()
 //    This constructor function initializes a `command` structure. You may
 //    add stuff to it as you grow the command structure.
@@ -33,9 +36,10 @@ command::command() {
 
 // command::~command()
 //    This destructor function is called to delete a command.
-
 command::~command() { delete this->next_cmd; }
 
+// sturct and destructors to hold information to hold groups of commands linked
+// by | pipes
 struct pipeline {
   command *first_command;
   pipeline *next_pipeline;
@@ -57,6 +61,8 @@ pipeline::~pipeline() {
   delete this->first_command;
   delete this->next_pipeline;
 }
+
+// struct to hold chain of conditional statements
 struct chain {
   chain *next_chain;
   pipeline *first_pipeline;
