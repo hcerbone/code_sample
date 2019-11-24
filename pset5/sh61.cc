@@ -11,11 +11,9 @@ struct command {
   std::vector<std::string> args;
   command *next_cmd;
   pid_t pid; // process ID running this command, -1 if none
-  bool is_or;
-  bool is_and;
   command();
   ~command();
-  pid_t make_child(pid_t pgid);
+  pid_t make_child(pid_t pgid, int in_fd, int out_fd, int close_fd);
 };
 // command::command()
 //    This constructor function initializes a `command` structure. You may
@@ -24,8 +22,6 @@ struct command {
 command::command() {
   this->pid = -1;
   this->next_cmd = nullptr;
-  this->is_or = false;
-  this->is_and = false;
 }
 
 // command::~command()
@@ -36,13 +32,19 @@ command::~command() { delete this->next_cmd; }
 struct pipeline {
   command *first_command;
   pipeline *next_pipeline;
+  bool is_or;
+  bool is_and;
+
   pipeline();
   ~pipeline();
+  pid_t run_commands();
 };
 
 pipeline::pipeline() {
   this->next_pipeline = nullptr;
   this->first_command = nullptr;
+  this->is_or = false;
+  this->is_and = false;
 }
 pipeline::~pipeline() {
   delete this->first_command;
@@ -50,11 +52,11 @@ pipeline::~pipeline() {
 }
 struct chain {
   chain *next_chain;
-  command *first_pipeline;
+  pipeline *first_pipeline;
   bool is_background;
   chain();
   ~chain();
-  void run_chain();
+  void run_pipelines();
 };
 chain::chain() {
   this->is_background = false;
@@ -84,33 +86,40 @@ chain::~chain() {
 //       its own process group (if `pgid == 0`). To avoid race conditions,
 //       this will require TWO calls to `setpgid`.
 
-pid_t command::make_child(pid_t pgid) {
-<<<<<<< HEAD
-  assert(this->args.size() > 0);
+pid_t command::make_child(pid_t pgid, int in_fd, int out_fd, int close_fd) {
+  if (this->args.size() == 0) {
+    _exit(0);
+  }
   (void)pgid; // You won’t need `pgid` until part 8.
 
   pid_t child_id = fork();
   assert(child_id >= 0);
+
+  // child
   if (child_id == 0) {
+    if (close_fd != 0) {
+      close(close_fd);
+    }
+    if (in_fd != -1) {
+      dup2(in_fd, STDIN_FILENO);
+      close(in_fd);
+    }
+    if (out_fd != -1) {
+      dup2(out_fd, STDOUT_FILENO);
+      close(out_fd);
+    }
     const char *in_args[this->args.size() + 1];
     for (size_t i = 0; i < this->args.size(); ++i) {
       in_args[i] = this->args[i].c_str();
     }
     in_args[this->args.size()] = nullptr;
     execvp(in_args[0], (char **)in_args);
-    _exit(0);
-  } else {
-    this->pid = child_id;
-    return child_id;
-  }
-=======
-    assert(this->args.size() > 0);
-    (void) pgid; // You won’t need `pgid` until part 8.
-    // Your code here!
+    _exit(1);
 
-    fprintf(stderr, "command::make_child not done yet\n");
+  } else { // parent
+    this->pid = child_id;
     return this->pid;
->>>>>>> b89cbfa3313bf92bdf67369c6a8242c2c755c93e
+  }
 }
 
 // run(c)
@@ -133,31 +142,60 @@ pid_t command::make_child(pid_t pgid) {
 //         `make_child`.
 //       - Call `claim_foreground(pgid)` before waiting for the pipeline.
 //       - Call `claim_foreground(0)` once the pipeline is complete.
-
-void chain::run_chain() {
+pid_t pipeline::run_commands() {
+  int last_pid = -1;
   command *curr_cmd = this->first_command;
-  int status;
+
+  int curr_stdin = -1;
+  int curr_stdout = -1;
+  int pfd[2] = {-1, -1};
+
   while (curr_cmd != nullptr) {
-    pid_t child_id = curr_cmd->make_child(0);
-    waitpid(child_id, &status, 0);
+    if (curr_cmd->next_cmd == nullptr) {
+      pfd[0] = -1;
+      curr_stdout = -1;
+    } else {
+      int check = pipe(pfd);
+      assert(check == 0);
+      curr_stdout = pfd[1];
+    }
+    last_pid = curr_cmd->make_child(0, curr_stdin, curr_stdout, pfd[0]);
+    if (curr_stdin != -1) {
+      close(curr_stdin);
+    }
+    if (curr_stdout != -1) {
+      close(curr_stdout);
+    }
+    curr_stdin = pfd[0];
+    curr_cmd = curr_cmd->next_cmd;
+  }
+  return last_pid;
+}
+void chain::run_pipelines() {
+  pipeline *curr_pipeline = this->first_pipeline;
+  int status;
+  while (curr_pipeline != nullptr) {
+    pid_t last_pid = curr_pipeline->run_commands();
+    pid_t exited_pid = waitpid(last_pid, &status, 0);
+    assert(last_pid == exited_pid);
     if (WIFEXITED(status)) {
       if (WEXITSTATUS(status) == 0) {
-        while (curr_cmd != nullptr && curr_cmd->is_or) {
-          curr_cmd = curr_cmd->next_cmd;
+        while (curr_pipeline != nullptr && curr_pipeline->is_or) {
+          curr_pipeline = curr_pipeline->next_pipeline;
         }
-        if (curr_cmd != nullptr) {
-          curr_cmd = curr_cmd->next_cmd;
+        if (curr_pipeline != nullptr) {
+          curr_pipeline = curr_pipeline->next_pipeline;
         }
       } else {
-        while (curr_cmd != nullptr && curr_cmd->is_and) {
-          curr_cmd = curr_cmd->next_cmd;
+        while (curr_pipeline != nullptr && curr_pipeline->is_and) {
+          curr_pipeline = curr_pipeline->next_pipeline;
         }
-        if (curr_cmd != nullptr) {
-          curr_cmd = curr_cmd->next_cmd;
+        if (curr_pipeline != nullptr) {
+          curr_pipeline = curr_pipeline->next_pipeline;
         }
       }
     } else {
-      curr_cmd = curr_cmd->next_cmd;
+      curr_pipeline = nullptr;
     }
   }
 }
@@ -168,11 +206,11 @@ void run(chain *curr_chain) {
       pid_t child_pid = fork();
       assert(child_pid >= 0);
       if (child_pid == 0) {
-        curr_chain->run_chain();
+        curr_chain->run_pipelines();
         _exit(0);
       }
     } else {
-      curr_chain->run_chain();
+      curr_chain->run_pipelines();
     }
     curr_chain = curr_chain->next_chain;
   }
@@ -194,21 +232,34 @@ chain *parse_line(const char *s) {
   chain *c = nullptr;
   command *curr_cmd = nullptr;
   chain *curr_chain = nullptr;
+  pipeline *curr_pipeline = nullptr;
   bool new_chain = false;
+  bool new_pipeline = false;
   while ((s = parse_shell_token(s, &type, &token)) != nullptr) {
     if (!c) {
       c = new chain;
       c->first_pipeline = new pipeline;
+      curr_pipeline = c->first_pipeline;
+      curr_pipeline->first_command = new command;
+      curr_cmd = curr_pipeline->first_command;
       curr_chain = c;
-      curr_cmd = c->first_command;
     }
     if (new_chain) {
       new_chain = false;
       // fprintf(stderr, "HERE\n");
       curr_chain->next_chain = new chain;
       curr_chain = curr_chain->next_chain;
-      curr_chain->first_command = new command;
-      curr_cmd = curr_chain->first_command;
+      curr_chain->first_pipeline = new pipeline;
+      curr_pipeline = curr_chain->first_pipeline;
+      curr_pipeline->first_command = new command;
+      curr_cmd = curr_pipeline->first_command;
+    }
+    if (new_pipeline) {
+      new_pipeline = false;
+      curr_pipeline->next_pipeline = new pipeline;
+      curr_pipeline = curr_pipeline->next_pipeline;
+      curr_pipeline->first_command = new command;
+      curr_cmd = curr_pipeline->first_command;
     }
     switch (type) {
     case TYPE_NORMAL:
@@ -223,16 +274,16 @@ chain *parse_line(const char *s) {
       new_chain = true;
       break;
     case TYPE_OR:
-      curr_cmd->is_or = true;
-      curr_cmd->next_cmd = new command;
-      curr_cmd = curr_cmd->next_cmd;
+      curr_pipeline->is_or = true;
+      new_pipeline = true;
       break;
     case TYPE_AND:
-      curr_cmd->is_and = true;
-      curr_cmd->next_cmd = new command;
-      curr_cmd = curr_cmd->next_cmd;
+      curr_pipeline->is_and = true;
+      new_pipeline = true;
       break;
     case TYPE_PIPE:
+      curr_cmd->next_cmd = new command;
+      curr_cmd = curr_cmd->next_cmd;
       break;
     default:
       curr_cmd->args.push_back(token);
