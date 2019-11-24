@@ -5,12 +5,19 @@
 #include <sys/wait.h>
 #include <vector>
 
+volatile sig_atomic_t got_signal;
+
+void signal_handler(int signal) {
+  (void)signal;
+  got_signal = -1;
+}
 // struct command
 //    Data structure describing a command. Add your own stuff.
 struct command {
   std::vector<std::string> args;
   command *next_cmd;
   pid_t pid; // process ID running this command, -1 if none
+  std::string redirs[3];
   command();
   ~command();
   pid_t make_child(pid_t pgid, int in_fd, int out_fd, int close_fd);
@@ -37,7 +44,7 @@ struct pipeline {
 
   pipeline();
   ~pipeline();
-  pid_t run_commands();
+  pid_t run_commands(bool is_background);
 };
 
 pipeline::pipeline() {
@@ -90,13 +97,18 @@ pid_t command::make_child(pid_t pgid, int in_fd, int out_fd, int close_fd) {
   if (this->args.size() == 0) {
     _exit(0);
   }
-  (void)pgid; // You won’t need `pgid` until part 8.
 
-  pid_t child_id = fork();
-  assert(child_id >= 0);
+  pid_t child_pid = fork();
+  assert(child_pid >= 0);
 
   // child
-  if (child_id == 0) {
+  if (child_pid == 0) {
+
+    if (pgid == 0) {
+      setpgid(0, 0);
+    } else {
+      setpgid(getpid(), pgid);
+    }
     if (close_fd != 0) {
       close(close_fd);
     }
@@ -108,42 +120,50 @@ pid_t command::make_child(pid_t pgid, int in_fd, int out_fd, int close_fd) {
       dup2(out_fd, STDOUT_FILENO);
       close(out_fd);
     }
+    for (int i = 0; i < 3; ++i) {
+      int flags = O_WRONLY | O_CREAT | O_TRUNC;
+      if (i == 0) {
+        flags = O_RDONLY;
+      }
+      if (!this->redirs[i].empty()) {
+        const char *redir_str = this->redirs[i].c_str();
+        int new_fd = open(redir_str, flags, 0666);
+        if (new_fd == -1) {
+          fprintf(stderr, "%s: %s\n", redir_str, strerror(errno));
+          _exit(1);
+        }
+        dup2(new_fd, i);
+        close(new_fd);
+      }
+    }
     const char *in_args[this->args.size() + 1];
     for (size_t i = 0; i < this->args.size(); ++i) {
       in_args[i] = this->args[i].c_str();
     }
+    if (this->args[0] == "cd") {
+      int r = chdir(this->args[1].c_str());
+      _exit(r);
+    }
     in_args[this->args.size()] = nullptr;
     execvp(in_args[0], (char **)in_args);
     _exit(1);
-
   } else { // parent
-    this->pid = child_id;
+    if (pgid == 0) {
+      setpgid(child_pid, child_pid);
+    } else {
+      setpgid(child_pid, pgid);
+    }
+    if (this->args[0] == "cd") {
+      int z = chdir(this->args[1].c_str());
+    }
+    this->pid = child_pid;
     return this->pid;
   }
 }
 
-// run(c)
-//    Run the command *list* starting at `c`. Initially this just calls
-//    `make_child` and `waitpid`; you’ll extend it to handle command lists,
-//    conditionals, and pipelines.
-//
-//    PART 1: Start the single command `c` with `c->make_child(0)`,
-//        and wait for it to finish using `waitpid`.
-//    The remaining parts may require that you change `struct command`
-//    (e.g., to track whether a command is in the background)
-//    and write code in `run` (or in helper functions).
-//    PART 2: Treat background commands differently.
-//    PART 3: Introduce a loop to run all commands in the list.
-//    PART 4: Change the loop to handle conditionals.
-//    PART 5: Change the loop to handle pipelines. Start all processes in
-//       the pipeline in parallel. The status of a pipeline is the status of
-//       its LAST command.
-//    PART 8: - Choose a process group for each pipeline and pass it to
-//         `make_child`.
-//       - Call `claim_foreground(pgid)` before waiting for the pipeline.
-//       - Call `claim_foreground(0)` once the pipeline is complete.
-pid_t pipeline::run_commands() {
+pid_t pipeline::run_commands(bool is_background) {
   int last_pid = -1;
+  pid_t pgid = 0;
   command *curr_cmd = this->first_command;
 
   int curr_stdin = -1;
@@ -160,6 +180,13 @@ pid_t pipeline::run_commands() {
       curr_stdout = pfd[1];
     }
     last_pid = curr_cmd->make_child(0, curr_stdin, curr_stdout, pfd[0]);
+    if (pgid == 0) {
+      pgid = last_pid;
+
+      if (!is_background) {
+        claim_foreground(pgid);
+      }
+    }
     if (curr_stdin != -1) {
       close(curr_stdin);
     }
@@ -171,11 +198,12 @@ pid_t pipeline::run_commands() {
   }
   return last_pid;
 }
+
 void chain::run_pipelines() {
   pipeline *curr_pipeline = this->first_pipeline;
   int status;
   while (curr_pipeline != nullptr) {
-    pid_t last_pid = curr_pipeline->run_commands();
+    pid_t last_pid = curr_pipeline->run_commands(this->is_background);
     pid_t exited_pid = waitpid(last_pid, &status, 0);
     assert(last_pid == exited_pid);
     if (WIFEXITED(status)) {
@@ -207,10 +235,11 @@ void run(chain *curr_chain) {
       assert(child_pid >= 0);
       if (child_pid == 0) {
         curr_chain->run_pipelines();
-        _exit(0);
+        _exit(1);
       }
     } else {
       curr_chain->run_pipelines();
+      claim_foreground(0);
     }
     curr_chain = curr_chain->next_chain;
   }
@@ -222,19 +251,17 @@ void run(chain *curr_chain) {
 //    types.
 
 chain *parse_line(const char *s) {
+  bool new_chain = false;
+  bool new_pipeline = false;
+  bool next_file = false;
   int type;
+  int redir = -1;
   std::string token;
-  // Your code here!
-
-  // build the command
-  // (The handout code treats every token as a normal command word.
-  // You'll add code to handle operators.)
   chain *c = nullptr;
   command *curr_cmd = nullptr;
   chain *curr_chain = nullptr;
   pipeline *curr_pipeline = nullptr;
-  bool new_chain = false;
-  bool new_pipeline = false;
+
   while ((s = parse_shell_token(s, &type, &token)) != nullptr) {
     if (!c) {
       c = new chain;
@@ -263,7 +290,12 @@ chain *parse_line(const char *s) {
     }
     switch (type) {
     case TYPE_NORMAL:
-      curr_cmd->args.push_back(token);
+      if (next_file) {
+        curr_cmd->redirs[redir] = token;
+        next_file = false;
+      } else {
+        curr_cmd->args.push_back(token);
+      }
       break;
     case TYPE_SEQUENCE:
       curr_chain->is_background = false;
@@ -284,6 +316,16 @@ chain *parse_line(const char *s) {
     case TYPE_PIPE:
       curr_cmd->next_cmd = new command;
       curr_cmd = curr_cmd->next_cmd;
+      break;
+    case TYPE_REDIRECTION:
+      if (token == ">") {
+        redir = 1;
+      } else if (token == "<") {
+        redir = 0;
+      } else if (token == "2>") {
+        redir = 2;
+      }
+      next_file = true;
       break;
     default:
       curr_cmd->args.push_back(token);
@@ -356,6 +398,10 @@ int main(int argc, char *argv[]) {
 
     // Handle zombie processes and/or interrupt requests
     // Your code here!
+    pid_t wait_val = 1;
+    while (wait_val > 0) {
+      wait_val = waitpid(-1, 0, WNOHANG);
+    }
   }
 
   return 0;
